@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Aperture, ArrowDown, ArrowLeft, ArrowRight, Bell, Box, Check, ChevronDown,
   CircleHelp, Code2, Copy, Eye, FileText, Globe, GripVertical, Image as ImageIcon,
@@ -37,20 +37,25 @@ function ProjectThumb({ tint, kind='portfolio' }) {
 function App() {
   const [page, setPage] = useState('dashboard')
   const [activeProject, setActiveProject] = useState('My first website')
-  const [projects, setProjects] = useState(initialProjects)
-  const [blocks, setBlocks] = useState(starterBlocks)
+  const [projects, setProjects] = useState(() => { try { return JSON.parse(localStorage.getItem('dreambuild-projects')) || initialProjects } catch { return initialProjects } })
+  const [blocks, setBlocks] = useState(() => { try { return JSON.parse(localStorage.getItem('dreambuild-blocks')) || starterBlocks } catch { return starterBlocks } })
   const [selectedId, setSelectedId] = useState('hero-1')
   const [panel, setPanel] = useState('elements')
   const [device, setDevice] = useState('desktop')
-  const [siteName, setSiteName] = useState('My first website')
+  const [siteName, setSiteName] = useState(() => localStorage.getItem('dreambuild-site-name') || 'My first website')
   const [showTemplates, setShowTemplates] = useState(false)
   const [showPublish, setShowPublish] = useState(false)
+  const [showAI, setShowAI] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
   const [toast, setToast] = useState('')
   const [search, setSearch] = useState('')
   const selected = blocks.find(b => b.id === selectedId) || blocks[0]
   const filteredTemplates = useMemo(() => templates.filter(t => `${t.name} ${t.category}`.toLowerCase().includes(search.toLowerCase())), [search])
 
+  useEffect(() => { try { localStorage.setItem('dreambuild-projects', JSON.stringify(projects)); localStorage.setItem('dreambuild-blocks', JSON.stringify(blocks)); localStorage.setItem('dreambuild-site-name', siteName) } catch {} }, [projects, blocks, siteName])
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 2400) }
+  const saveProject = () => { const name = siteName.trim() || 'Untitled website'; setSiteName(name); setActiveProject(name); setProjects(prev => [{ name, kind: 'Website', updated: 'Saved just now', tint: 'lavender' }, ...prev.filter(p => p.name !== name)]); notify('Project saved on this device') }
+  const exportWebsite = () => { const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${siteName.replace(/[<>]/g, '')}</title><style>body{margin:0;font-family:Arial,sans-serif;color:#272044}section{padding:72px 8%;}h1{font-size:clamp(32px,6vw,64px)}p{line-height:1.7;max-width:680px}a{display:inline-block;padding:12px 18px;background:#7358d8;color:white;text-decoration:none;border-radius:8px}.features{background:#faf8ff}</style></head><body>${blocks.map(b => `<section style="background:${b.bg};color:${b.color}" class="${b.type}"><h1>${String(b.text || '').replace(/[<>]/g, '')}</h1><p>${String(b.subtitle || '').replace(/[<>]/g, '')}</p>${b.button ? `<a href="#contact">${String(b.button).replace(/[<>]/g, '')}</a>` : ''}</section>`).join('')}<section id="contact"><p>Made with DreamBuild</p></section></body></html>`; const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${(siteName || 'dreambuild-site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.html`; a.click(); URL.revokeObjectURL(url); notify('Website HTML exported') }
   const addBlock = (type) => {
     const presets = {
       hero: { title: 'hero', text: 'A headline that tells your story.', subtitle: 'Add a short sentence that makes people want to know more.', button: 'Learn more', bg: '#f0eaff', color: '#272044' },
@@ -76,8 +81,8 @@ function App() {
     setBlocks(remaining); setSelectedId(remaining[0]?.id || ''); notify('Section removed')
   }
   const startNew = () => {
-    setBlocks(starterBlocks.map(b => ({...b, id: `${b.type}-${Date.now()}-${Math.random()}`})))
-    setSiteName('Untitled website'); setActiveProject('Untitled website'); setSelectedId(''); setPage('editor')
+    const fresh = starterBlocks.map(b => ({...b, id: `${b.type}-${Date.now()}-${Math.random()}`}))
+    setBlocks(fresh); setSiteName('Untitled website'); setActiveProject('Untitled website'); setSelectedId(fresh[0]?.id || ''); setPanel('elements'); setShowTemplates(false); setPage('editor')
   }
   const chooseTemplate = (template) => {
     setSiteName(template.name); setActiveProject(template.name)
@@ -88,11 +93,24 @@ function App() {
     setSelectedId(''); setShowTemplates(false); setPage('editor'); notify(`${template.name} template opened`)
   }
   const publish = () => { setShowPublish(false); notify('Preview ready! Connect hosting to publish your live site.') }
+  const generateLocalDraft = () => {
+    const brief = aiPrompt.trim()
+    if (!brief) { notify('Describe your website idea first'); return }
+    const store = /store|shop|fashion|product|clothing|beauty|cosmetic/i.test(brief)
+    const name = store ? 'Nova Atelier' : 'Dream Project'
+    setSiteName(name); setActiveProject(name)
+    const fresh = [
+      { id: `hero-${Date.now()}`, type: 'hero', title: 'hero', text: brief.length > 92 ? `${brief.slice(0, 89).trim()}…` : brief, subtitle: 'A first draft shaped from your brief. Refine the headline, story, colours and sections in the editor.', button: store ? 'Explore collection' : 'Get started', bg: '#100d1c', color: '#f7f3ff' },
+      { id: `features-${Date.now()+1}`, type: 'features', title: 'features', text: store ? 'Designed to stand apart' : 'Built around your idea', subtitle: 'Use this section to explain your value, highlight key features, and help visitors take the next step.', button: 'Discover more', bg: '#151321', color: '#f7f3ff' }
+    ]
+    setBlocks(fresh); setSelectedId(fresh[0].id); setPanel('elements'); setPage('editor'); setShowAI(false); setAiPrompt('');
+    notify('Starter draft created locally — AI model connection is not set up yet')
+  }
 
   if (page === 'editor') return <div className="app-shell editor-shell">
     <header className="editor-topbar">
       <div className="editor-brand"><IconButton label="Back to dashboard" onClick={() => setPage('dashboard')}><ArrowLeft size={18}/></IconButton><Logo/><span className="topbar-divider"/><input className="site-name-input" value={siteName} onChange={e => {setSiteName(e.target.value); setActiveProject(e.target.value)}} aria-label="Website name"/><span className="saved-indicator"><Check size={13}/> Saved locally</span></div>
-      <div className="editor-actions"><IconButton label="Undo" onClick={() => notify('Undo will be connected in a later version')}><Undo2 size={17}/></IconButton><IconButton label="Redo" onClick={() => notify('Redo will be connected in a later version')}><Redo2 size={17}/></IconButton><span className="topbar-divider"/><div className="device-switch"><button className={device==='desktop'?'active':''} onClick={() => setDevice('desktop')} aria-label="Desktop preview"><Monitor size={16}/></button><button className={device==='mobile'?'active':''} onClick={() => setDevice('mobile')} aria-label="Mobile preview"><Smartphone size={16}/></button></div><button className="button button-soft preview-button" onClick={() => notify('You are viewing the live editor preview')}><Eye size={15}/> Preview</button><button className="button button-primary" onClick={() => setShowPublish(true)}><Rocket size={15}/> Publish</button></div>
+      <div className="editor-actions"><IconButton label="Undo" onClick={() => notify('Undo will be connected in a later version')}><Undo2 size={17}/></IconButton><IconButton label="Redo" onClick={() => notify('Redo will be connected in a later version')}><Redo2 size={17}/></IconButton><span className="topbar-divider"/><div className="device-switch"><button className={device==='desktop'?'active':''} onClick={() => setDevice('desktop')} aria-label="Desktop preview"><Monitor size={16}/></button><button className={device==='mobile'?'active':''} onClick={() => setDevice('mobile')} aria-label="Mobile preview"><Smartphone size={16}/></button></div><button className="button button-soft preview-button" onClick={() => notify('You are viewing the live editor preview')}><Eye size={15}/> Preview</button><button className="button button-soft" onClick={saveProject}><Check size={15}/> Save</button><button className="button button-primary" onClick={exportWebsite}><Rocket size={15}/> Export</button></div>
     </header>
     <div className="editor-workspace">
       <aside className="left-panel">
@@ -140,19 +158,20 @@ function App() {
   return <div className="app-shell dashboard-shell">
     <aside className="dashboard-sidebar"><Logo/><div className="workspace-switch"><div className="workspace-avatar">D</div><div><b>DreamBuild Studio</b><small>Personal workspace</small></div><ChevronDown size={15}/></div>
       <div className="side-label">WORKSPACE</div><button className="side-link active"><LayoutDashboard size={17}/> Overview</button><button className="side-link" onClick={() => setShowTemplates(true)}><Layers size={17}/> Templates <span className="side-count">12</span></button><button className="side-link" onClick={() => {setPage('editor');setSelectedId(blocks[0]?.id || '')}}><MousePointer2 size={17}/> Editor</button>
-      <div className="side-label side-label-spaced">YOUR SPACE</div><button className="side-link" onClick={() => notify('Folders are coming soon')}><FileText size={17}/> All projects</button><button className="side-link" onClick={() => notify('Settings are coming soon')}><Settings2 size={17}/> Settings</button>
+      <div className="side-label side-label-spaced">YOUR SPACE</div><button className="side-link" onClick={() => { setPage('dashboard'); notify(`You have ${projects.length} projects saved on this device`) }}><FileText size={17}/> All projects</button><button className="side-link" onClick={() => notify('Your projects are saved locally in this browser on this device')}><Settings2 size={17}/> Settings</button>
       <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><CircleHelp size={17}/></div><b>Need a hand?</b><p>Little steps make big things.</p><button onClick={() => notify('Help centre coming soon')}>Visit help centre <ArrowRight size={13}/></button></div><div className="profile-row"><div className="profile-avatar">Y</div><div><b>Your workspace</b><small>Free plan · Starter</small></div><MoreHorizontal size={17}/></div></div>
     </aside>
-    <main className="dashboard-main"><header className="dashboard-topbar"><div className="mobile-brand"><Logo/></div><div className="breadcrumb">Workspace <ChevronDown size={13}/> <span>Overview</span></div><div className="topbar-right"><button className="whats-new" onClick={() => notify('You are all caught up!')}><Bell size={16}/><span>What’s new</span><i/></button><div className="profile-avatar small">Y</div></div></header>
+    <main className="dashboard-main"><header className="dashboard-topbar"><div className="mobile-brand"><Logo/></div><div className="breadcrumb">Workspace <ChevronDown size={13}/> <span>Overview</span></div><div className="topbar-right"><button className="button button-soft ai-studio-trigger" onClick={() => setShowAI(true)}><Sparkles size={15}/> AI Studio</button><button className="whats-new" onClick={() => notify('You are all caught up!')}><Bell size={16}/><span>What’s new</span><i/></button><div className="profile-avatar small">Y</div></div></header>
       <div className="dashboard-content"><div className="welcome-row"><div><div className="eyebrow-line"><Sparkles size={14}/> YOUR CREATIVE SPACE</div><h1>Let’s make something <em>lovely.</em></h1><p>Your next great idea is only a few clicks away.</p></div><button className="button button-primary create-button" onClick={startNew}><Plus size={17}/> Create a website</button></div>
         <div className="hero-promo"><div className="promo-copy"><span className="promo-badge"><Sparkles size={12}/> YOUR CANVAS AWAITS</span><h2>Big ideas deserve<br/><em>beautiful beginnings.</em></h2><p>Start with a template or build your own from a blank canvas. You’re in charge of every little detail.</p><div className="promo-actions"><button className="button button-dark" onClick={() => setShowTemplates(true)}>Explore templates <ArrowRight size={15}/></button><button className="text-button" onClick={startNew}>Start from scratch <ArrowRight size={14}/></button></div></div><div className="promo-art"><div className="promo-sun"/><div className="promo-card card-back"><span/><span/><span/></div><div className="promo-card card-front"><div className="mini-browser-bar"><i/><i/><i/></div><div className="mini-art-arch"/><div className="mini-lines"><b/><i/><i/></div><div className="mini-button"/></div><div className="floating-spark spark-a">✳</div><div className="floating-spark spark-b">✦</div><div className="floating-tag">Your idea, your rules <Sparkles size={12}/></div></div></div>
-        <div className="section-title-row"><div><h2>Your projects <span className="project-count">{projects.length}</span></h2><p>All the things you’re dreaming up.</p></div><button className="view-all" onClick={() => notify('You are viewing all your sample projects')}>View all <ArrowRight size={14}/></button></div>
-        <div className="project-grid">{projects.map((p,i) => <button className="project-card" key={p.name} onClick={() => {setSiteName(p.name);setActiveProject(p.name);setPage('editor');setSelectedId(blocks[0]?.id || '')}}><ProjectThumb tint={p.tint}/><div className="project-card-body"><div className="project-card-title"><b>{p.name}</b><MoreHorizontal size={17} onClick={e => {e.stopPropagation();notify('Project menu coming soon')}}/></div><span className="project-kind">{p.kind}</span><span className="project-updated">{p.updated}</span></div></button>)}
+        <div className="section-title-row"><div><h2>Your projects <span className="project-count">{projects.length}</span></h2><p>All the things you’re dreaming up.</p></div><button className="view-all" onClick={() => notify(`Showing ${projects.length} projects saved on this device`)}>View all <ArrowRight size={14}/></button></div>
+        <div className="project-grid">{projects.map((p,i) => <button className="project-card" key={p.name} onClick={() => {setSiteName(p.name);setActiveProject(p.name);setPage('editor');setSelectedId(blocks[0]?.id || ''); notify(`${p.name} opened`) }}><ProjectThumb tint={p.tint}/><div className="project-card-body"><div className="project-card-title"><b>{p.name}</b><MoreHorizontal size={17} onClick={e => {e.stopPropagation();notify('Project menu coming soon')}}/></div><span className="project-kind">{p.kind}</span><span className="project-updated">{p.updated}</span></div></button>)}
           <button className="new-project-card" onClick={startNew}><span className="new-project-icon"><Plus size={20}/></span><b>A fresh start</b><span>Bring a new idea to life</span><div className="new-project-arrow"><ArrowRight size={16}/></div></button></div>
         <div className="bottom-tip"><div className="tip-icon"><WandSparkles size={18}/></div><div><b>A little tip for your creative journey</b><p>You can start with a template, then change the words, colours, and sections to make it yours.</p></div><button onClick={() => setShowTemplates(true)}>Browse templates <ArrowRight size={14}/></button></div>
         <footer className="dashboard-footer"><span>© 2026 DreamBuild Studio</span><span>Made for curious creators <span className="heart">♥</span></span></footer>
       </div>
     </main>
+    {showAI && <div className="modal-backdrop" onClick={() => setShowAI(false)}><div className="ai-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setShowAI(false)} aria-label="Close AI Studio"><X size={18}/></button><div className="ai-orb"><Sparkles size={24}/></div><div className="eyebrow-line">DREAMBUILD AI STUDIO</div><h2>Turn your idea into a starting point.</h2><p>Describe the website you want. This offline starter creates an editable draft locally; a real AI model is not connected yet.</p><textarea className="ai-prompt" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Example: A futuristic purple portfolio for a creative developer…" rows={4}/><div className="ai-prompt-hint"><Sparkles size={14}/> Tip: include your website type, mood, colours and sections.</div><button className="button button-primary full-button" onClick={generateLocalDraft}><WandSparkles size={16}/> Create starter draft <ArrowRight size={15}/></button><span className="ai-disclaimer">No API key required · Local prototype · Not real AI generation yet</span></div></div>}
     {showTemplates && <div className="modal-backdrop" onClick={() => setShowTemplates(false)}><div className="templates-modal" onClick={e => e.stopPropagation()}><div className="templates-modal-head"><div><div className="eyebrow-line"><Sparkles size={14}/> FIND YOUR STARTING POINT</div><h2>Pick a little inspiration.</h2><p>Choose a template to open it in the editor.</p></div><button className="modal-close" onClick={() => setShowTemplates(false)}><X size={18}/></button></div><div className="template-search"><Search size={16}/><input placeholder="Search templates..." value={search} onChange={e => setSearch(e.target.value)}/></div><div className="template-grid">{filteredTemplates.map(t => <button className="template-card" key={t.name} onClick={() => chooseTemplate(t)}><ProjectThumb tint={t.tint}/><div><b>{t.name}</b><span>{t.category}</span><p>{t.description}</p></div><ArrowRight size={16}/></button>)}</div><div className="template-modal-footer"><span>More templates will be added as we build.</span><button className="button button-soft" onClick={startNew}>Blank canvas <Plus size={14}/></button></div></div></div>}
     {toast && <div className="toast"><Check size={15}/>{toast}</div>}
   </div>
